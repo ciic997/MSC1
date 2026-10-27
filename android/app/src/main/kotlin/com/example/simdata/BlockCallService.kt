@@ -1,8 +1,8 @@
 package com.example.simdata
 
 import android.Manifest
-import android.app.NotificationChannel
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.SharedPreferences
@@ -23,6 +23,7 @@ class BlockCallService : CallScreeningService() {
     companion object {
         const val CHANNEL_ID = "blocked_calls"
         const val MAX_LOG = 100
+        private val lock = Any()
     }
 
     /** يحوّل أي رقم (بما فيه الأرقام العربية) إلى أرقام 0-9 فقط. */
@@ -46,17 +47,19 @@ class BlockCallService : CallScreeningService() {
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 val tm = getSystemService(TelephonyManager::class.java)
-                    .createForPhoneAccountHandle(h)
-                val id = tm?.subscriptionId ?: -1
-                if (id != -1) return id
+                    ?.createForPhoneAccountHandle(h)
+                val id = tm?.subscriptionId ?: SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                if (id != SubscriptionManager.INVALID_SUBSCRIPTION_ID) return id
             }
         } catch (_: Throwable) {}
+        val raw = h.id ?: return -1
         try {
             val sm = getSystemService(SubscriptionManager::class.java)
-            sm.activeSubscriptionInfoList?.firstOrNull { it.iccId == h.id }
+            sm.activeSubscriptionInfoList
+                ?.firstOrNull { it.subscriptionId.toString() == raw || it.iccId == raw }
                 ?.let { return it.subscriptionId }
         } catch (_: Throwable) {}
-        return h.id?.toIntOrNull() ?: -1
+        return raw.toIntOrNull() ?: -1
     }
 
     private fun isContact(number: String): Boolean {
@@ -71,12 +74,12 @@ class BlockCallService : CallScreeningService() {
     }
 
     override fun onScreenCall(details: Call.Details) {
-        val prefs = getSharedPreferences("cfg", MODE_PRIVATE)
-        val blocked = prefs.getInt("blocked", -1)
-        val enabled = prefs.getBoolean("enabled", true)
         val resp = CallResponse.Builder()
-
         try {
+            val prefs = getSharedPreferences("cfg", MODE_PRIVATE)
+            val blocked = prefs.getInt("blocked", -1)
+            val enabled = prefs.getBoolean("enabled", true)
+
             if (enabled && blocked != -1 &&
                 details.callDirection == Call.Details.DIRECTION_INCOMING) {
 
@@ -93,8 +96,11 @@ class BlockCallService : CallScreeningService() {
                         val silence = prefs.getString("mode", "reject") == "silence"
                         if (silence) resp.setSilenceCall(true)
                         else resp.setDisallowCall(true).setRejectCall(true).setSkipNotification(true)
-                        append(prefs, number, if (silence) "silence" else "reject")
-                        if (prefs.getBoolean("notify", false)) notifyBlocked(number, silence)
+                        // السجل والإشعار لا يجب أن يُفشلا الحظر نفسه
+                        try { append(prefs, number, if (silence) "silence" else "reject") } catch (_: Throwable) {}
+                        try {
+                            if (prefs.getBoolean("notify", false)) notifyBlocked(number, silence)
+                        } catch (_: Throwable) {}
                     }
                 }
             }
@@ -107,32 +113,32 @@ class BlockCallService : CallScreeningService() {
     private fun notifyBlocked(number: String, silence: Boolean) {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val nm = getSystemService(NotificationManager::class.java)
+        val nm = getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "المكالمات المحجوبة", NotificationManager.IMPORTANCE_LOW))
-        val launch = packageManager.getLaunchIntentForPackage(packageName)
-        val pi = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE)
-        val n = Notification.Builder(this, CHANNEL_ID)
+        val b = Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.sym_call_missed)
             .setContentTitle(if (silence) "تم كتم مكالمة" else "تم رفض مكالمة")
             .setContentText(if (number.isEmpty()) "رقم مخفي" else number)
-            .setContentIntent(pi)
             .setAutoCancel(true)
-            .build()
-        nm.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), n)
+        packageManager.getLaunchIntentForPackage(packageName)?.let {
+            b.setContentIntent(PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE))
+        }
+        nm.notify((System.currentTimeMillis() % Int.MAX_VALUE).toInt(), b.build())
     }
 
-    @Synchronized
     private fun append(prefs: SharedPreferences, number: String, action: String) {
-        val old = JSONArray(prefs.getString("log", "[]"))
-        val arr = JSONArray()
-        val start = maxOf(0, old.length() - (MAX_LOG - 1))
-        for (i in start until old.length()) arr.put(old.get(i))
-        arr.put(JSONObject().put("number", number)
-            .put("time", System.currentTimeMillis()).put("action", action))
-        prefs.edit()
-            .putString("log", arr.toString())
-            .putLong("total", prefs.getLong("total", 0L) + 1)
-            .apply()
+        synchronized(lock) {
+            val old = try { JSONArray(prefs.getString("log", "[]") ?: "[]") } catch (_: Throwable) { JSONArray() }
+            val arr = JSONArray()
+            val start = maxOf(0, old.length() - (MAX_LOG - 1))
+            for (i in start until old.length()) arr.put(old.get(i))
+            arr.put(JSONObject().put("number", number)
+                .put("time", System.currentTimeMillis()).put("action", action))
+            prefs.edit()
+                .putString("log", arr.toString())
+                .putLong("total", prefs.getLong("total", 0L) + 1)
+                .commit()
+        }
     }
 }
