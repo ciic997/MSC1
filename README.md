@@ -1,9 +1,18 @@
-# MSC — King Style (v1.3)
+# MSC — King Style (v1.3.1)
 
 تطبيق Flutter لأجهزة أندرويد ذات شريحتين:
 - تخصيص شريحة واحدة للإنترنت فقط
 - رفض أو كتم المكالمات الواردة على تلك الشريحة
 - أرقام مسموحة + جهات الاتصال + سجل المكالمات المحجوبة
+
+## إصلاحات v1.3.1 (استقرار)
+- **إصلاح السبب الرئيسي لعدم عمل الميزات:** المانيفست يستخدم الآن أسماء كاملة `com.example.simdata.MainActivity` / `BlockCallService` (كانت نسبية فتُحلّ إلى `com.example.sim_data_app` الذي لا يحوي كود Kotlin)
+- **أيقونة التطبيق** مولّدة من `assets/splash.jpg` (أيقونة تكيفية + قديمة + دائرية) داخل `android/app/src/main/res`
+- `setup.sh` يحذف MainActivity الافتراضية ويضبط `minSdk = 29` تلقائياً
+- معالجة أخطاء القناة في Kotlin وDart (لا انهيار، وتظهر رسالة سبب واضحة)
+- حفظ الإعدادات متزامن (`commit`) كي تراه خدمة الحظر فوراً
+- تحميل البيانات لا يُتجاهل إذا طُلب أثناء تحميل جارٍ
+- مطابقة الشريحة في الخدمة أكثر موثوقية، وفشل السجل/الإشعار لا يمنع الحظر
 
 ## الجديد في v1.3
 - **تشغيل/إيقاف الحظر** مؤقتاً دون إلغاء تخصيص الشريحة
@@ -21,11 +30,12 @@
 - تحديثات توافق مع Flutter الحديث (`withValues`, `CardThemeData`, `permission_handler 12`)
 
 ## التشغيل
-1. `flutter create --org com.example --project-name sim_data_app --platforms android sim_data_app`
-2. انسخ محتويات هذا المجلد فوق المشروع الجديد (استبدل `pubspec.yaml` و `lib/` و `android/app/src/main/` و مجلد `assets/`)
-3. في `android/app/build.gradle(.kts)` اجعل: `minSdk = 29`
-4. `flutter pub get && flutter run`
-   (على جهاز حقيقي بشريحتين — لا يعمل على المحاكي)
+```bash
+./setup.sh            # ينشئ ../sim_data_app_build ويدمج الملفات ويضبط minSdk
+cd ../sim_data_app_build
+flutter pub get && flutter run   # على جهاز حقيقي بشريحتين — لا يعمل على المحاكي
+```
+بعد فتح التطبيق: امنح صلاحية الهاتف، ثم فعّل دور «تصفية المكالمات».
 
 ## ملاحظات
 - يحتاج صلاحية الهاتف + دور «تصفية المكالمات» (Call Screening)
