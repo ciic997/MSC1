@@ -1,0 +1,17 @@
+name: sim_data_app
+description: MSC - تخصيص شريحة للإنترنت فقط
+publish_to: none
+version: 1.3.0+4
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  permission_handler: ^12.0.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/splash.jpg
