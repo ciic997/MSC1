@@ -28,11 +28,17 @@ jobs:
           cp -r android/app/src/main/. "$RUNNER_TEMP/app/android/app/src/main/"
           sed -i -E 's/minSdk(Version)?( =|) *flutter\.minSdkVersion/minSdk = 29/' "$RUNNER_TEMP"/app/android/app/build.gradle*
 
+      - name: Get dependencies
+        working-directory: ${{ runner.temp }}/app
+        run: flutter pub get
+
+      - name: Generate app icon from splash.jpg
+        working-directory: ${{ runner.temp }}/app
+        run: dart run flutter_launcher_icons
+
       - name: Build APK
         working-directory: ${{ runner.temp }}/app
-        run: |
-          flutter pub get
-          flutter build apk --release
+        run: flutter build apk --release
 
       - uses: actions/upload-artifact@v4
         with:
