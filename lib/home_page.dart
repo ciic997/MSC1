@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'sim_channel.dart';
@@ -30,6 +31,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool permanentlyDenied = false;
   String? error;
   bool _busy = false;
+  bool _again = false;
+
+  String _explain(Object e) {
+    if (e is MissingPluginException) {
+      return 'قناة النظام غير موجودة (sim_channel). تأكد أن AndroidManifest يستخدم '
+          'com.example.simdata.MainActivity ثم أعد التثبيت.';
+    }
+    if (e is PlatformException) {
+      if (e.code == 'PERMISSION') return 'يلزم منح صلاحية الهاتف لقراءة الشرائح.';
+      return 'خطأ من النظام: ${e.message ?? e.code}';
+    }
+    return 'حدث خطأ أثناء تحميل البيانات.';
+  }
 
   int get blocked => cfg['blocked'] as int;
   String get mode => cfg['mode'] as String;
@@ -68,7 +82,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   // ── Data ────────────────────────────────────────────────────────────────────
   Future<void> load({bool askPermission = false, bool silent = false}) async {
-    if (_busy) return;
+    if (_busy) {
+      _again = true; // نعيد التحميل بعد انتهاء الحالي بدل تجاهل الطلب
+      return;
+    }
     _busy = true;
     if (!silent && mounted) setState(() => loading = true);
     try {
@@ -96,18 +113,28 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         loading = false;
       });
     } catch (e) {
+      debugPrint('load failed: $e');
       if (!mounted) return;
       setState(() {
-        error = 'حدث خطأ أثناء تحميل البيانات.';
+        error = _explain(e);
         loading = false;
       });
     } finally {
       _busy = false;
+      if (_again && mounted) {
+        _again = false;
+        load(silent: true);
+      }
     }
   }
 
   Future<void> save(Map<String, dynamic> m) async {
-    await SimChannel.setConfig(m);
+    try {
+      await SimChannel.setConfig(m);
+    } catch (e) {
+      debugPrint('setConfig failed: $e');
+      toast('تعذّر حفظ الإعداد.');
+    }
     await load(silent: true);
   }
 

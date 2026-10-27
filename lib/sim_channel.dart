@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// جسر التواصل مع كود أندرويد (Kotlin).
@@ -18,9 +19,21 @@ class SimChannel {
   static Future<bool> hasRole() async =>
       (await _ch.invokeMethod<bool>('hasScreeningRole')) ?? false;
 
-  static Future<void> requestRole() => _ch.invokeMethod('requestScreeningRole');
+  static Future<void> requestRole() async {
+    try {
+      await _ch.invokeMethod('requestScreeningRole');
+    } catch (e) {
+      debugPrint('requestRole failed: $e');
+    }
+  }
 
-  static Future<void> openDataSettings() => _ch.invokeMethod('openDataSettings');
+  static Future<void> openDataSettings() async {
+    try {
+      await _ch.invokeMethod('openDataSettings');
+    } catch (e) {
+      debugPrint('openDataSettings failed: $e');
+    }
+  }
 }
 
 /// أدوات مشتركة للأرقام (تدعم الأرقام العربية والفارسية).
