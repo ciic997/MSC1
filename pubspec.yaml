@@ -18,8 +18,6 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/splash.jpg"
-  adaptive_icon_background: "#0D1B2A"
-  adaptive_icon_foreground: "assets/splash.jpg"
 
 flutter:
   uses-material-design: true
