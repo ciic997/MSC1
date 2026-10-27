@@ -3,11 +3,17 @@ name: Build APK
 on:
   push:
     branches: [main]
+    tags: ["v*"]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write   # لازم فقط لنشر Release عند وسم v*
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -19,28 +25,34 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
-      - name: Generate scaffold and overlay project files
+      # المستودع يحوي ملفات المشروع فقط؛ setup.sh يولّد هيكل Flutter ويدمجها ويضبط minSdk=29
+      - name: Generate Flutter project
+        run: bash ./setup.sh "$RUNNER_TEMP/app"
+
+      - name: Get packages
+        run: cd "$RUNNER_TEMP/app" && flutter pub get
+
+      - name: Analyze
+        continue-on-error: true   # يظهر التحذير دون إيقاف بناء الـ APK
+        run: cd "$RUNNER_TEMP/app" && flutter analyze --no-fatal-infos
+
+      - name: Build release APK
+        run: cd "$RUNNER_TEMP/app" && flutter build apk --release
+
+      - name: Collect APK
         run: |
-          flutter create --org com.example --project-name simdata --platforms android "$RUNNER_TEMP/app"
-          rm -rf "$RUNNER_TEMP/app/test" "$RUNNER_TEMP/app/lib" "$RUNNER_TEMP/app/android/app/src/main/kotlin"
-          cp -r lib assets pubspec.yaml "$RUNNER_TEMP/app/"
-          cp -r android/app/src/main/. "$RUNNER_TEMP/app/android/app/src/main/"
-          sed -i -E 's/minSdk(Version)?( =|) *flutter\.minSdkVersion/minSdk = 29/' "$RUNNER_TEMP"/app/android/app/build.gradle*
-
-      - name: Get dependencies
-        working-directory: ${{ runner.temp }}/app
-        run: flutter pub get
-
-      - name: Generate app icon from splash.jpg
-        working-directory: ${{ runner.temp }}/app
-        run: dart run flutter_launcher_icons
-
-      - name: Build APK
-        working-directory: ${{ runner.temp }}/app
-        run: flutter build apk --release
+          mkdir -p dist
+          cp "$RUNNER_TEMP/app/build/app/outputs/flutter-apk/app-release.apk" dist/MSC-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: MSC-apk
-          path: ${{ runner.temp }}/app/build/app/outputs/flutter-apk/app-release.apk
+          path: dist/*.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
